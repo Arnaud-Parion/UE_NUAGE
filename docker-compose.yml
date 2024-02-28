@@ -1,0 +1,58 @@
+version: '1'
+
+services:
+
+  seed:
+    build:
+      context: seed-data
+    depends_on:
+      - nginx
+
+  nginx:
+    build:
+      context: nginx
+    depends_on:
+      - vote
+
+  vote:
+    build:
+      context: vote
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  result:
+    build:
+      context: result
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  redis:
+    image: redis
+    healthcheck:
+      test: [ './redis.sh' ]
+      interval: 1m30s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - worker
+
+  worker:
+    build:
+      context: worker
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  postgresql:
+    image: postgres
+    healthcheck:
+      test: ['./postgres.sh']
+      interval: 1m30s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: password
