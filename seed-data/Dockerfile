@@ -1,11 +1,9 @@
-FROM python:3.13-rc-slim
+FROM python:latest
 
 COPY . .
 
-RUN python make-data.py
+RUN apt update && apt install -y apache2 && apt install -y apache2-utils
 
-RUN apt update &&\
-    apt install -y apache2 &&\
-    apt install -y apache2-utils
+RUN python make-data.py
 
 CMD ["sh", "./generate-votes.sh"]
