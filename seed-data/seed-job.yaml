@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed
+spec:
+  template:
+    metadata:
+      name: seed
+      labels:
+        app: seed
+    spec:
+      containers:
+        - image: europe-west9-docker.pkg.dev/ue-nuage/voting-images/seed
+          name: result
+          command: ["sh", "./generate-votes.sh"]
+      restartPolicy: Never
