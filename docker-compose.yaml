@@ -11,7 +11,7 @@ services:
   nginx:
     build: ./nginx
     ports:
-      - "80:80"
+      - "8000:8000"
     depends_on:
       - vote1
       - vote2
