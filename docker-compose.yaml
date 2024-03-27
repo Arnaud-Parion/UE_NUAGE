@@ -2,38 +2,20 @@ version: '1'
 services:
 
   seed:
+    image: europe-west9-docker.pkg.dev/ue-nuage/voting-images/seed
     build: ./seed-data
     depends_on:
-      - nginx
+      - vote
     networks:
       - front-tier
 
-  nginx:
-    build: ./nginx
-    ports:
-      - "80:80"
-    depends_on:
-      - vote1
-      - vote2
-    networks:
-      - front-tier
-
-  vote1:
+  vote:
+    image: europe-west9-docker.pkg.dev/ue-nuage/voting-images/vote
     build: ./vote
     depends_on:
       - redis
     ports:
       - "5000:5000"
-    networks:
-      - back-tier
-      - front-tier
-
-  vote2:
-    build: ./vote
-    depends_on:
-      - redis
-    ports:
-      - "5001:5000"
     networks:
       - back-tier
       - front-tier
@@ -51,6 +33,7 @@ services:
       test: [ "CMD","/healthchecks/redis.sh" ]
 
   worker:
+    image: europe-west9-docker.pkg.dev/ue-nuage/voting-images/worker
     build: ./worker
     depends_on:
       - db
@@ -72,6 +55,7 @@ services:
       test: ["CMD", "apt-get update && apt-get install -y curl && /healthchecks/postgres.sh"]
 
   result:
+    image: europe-west9-docker.pkg.dev/ue-nuage/voting-images/result
     build: ./result
     ports:
       - "4000:4000"
