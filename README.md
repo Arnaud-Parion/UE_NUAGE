@@ -1,120 +1,82 @@
-# Docker project
+# PROJET UE-NUAGE DAI Julien ET PARION ARNAUD
 
-The goal of the project is to deploy the following application by using Docker and Docker compose. You will give us a GitHub or Gitlab link for your project.
+## Structure
 
-![image](login-nuage-voting.drawio.svg)
+Notre projet est séparé en deux branches :
+- main qui comporte la partie kubernetes, et la partie terraform pour kubernetes
+- dockercompose-terraform_docker qui comporte la partie docker compose et la partie terraform pour docker
 
-## Mandatory version
-- one Dockerfile per service that exposes the internal port of the container
-- one docker-compose.yml file to deploy the stack
-- adequate `depends_on`
-- two networks will be defined: `front-net` and `back-net`
-- a README file explaining how to configure and deploy the stack
+Une version de fonctionnelle de docker est nécessaire pour suivre les prochaines étapes.
 
-## Optional extended version
-- healthchecks on vote, redis and db services (some scripts are given in `healthcheck` directory)
-- reducing the size of images
-- multistage build on the worker service (.NET)
+## Docker Compose
 
+Pour cette partie, allez sur la branche dockercompose-terraform_docker et lancez les commandes suivantes :
+- ```docker compose build```
+- ```docker compose up```
 
-## Some elements
+## Terraform pour Docker
 
-The base image will contain the basic tools for the language the application is written in.
-You should use a tag to specify which version of the image you want to pull.
-For building purposes, it is good practice to use a `slim` version of the image.
-e.g. for Python `python:3.13-rc-slim`, for Node.js `node:18-slim`
+Pour cette partie, allez sur la branche dockercompose-terraform_docker et lancez les commandes suivantes :
+- ```terraform init```
+- ```terraform plan```
+- ```terraform apply```
+- "yes"
 
+## Kubernetes
 
-### `vote` service
+Pour déployer le projet il faut avoir installé Google Cloud CLI et Kubernetes CLI, ainsi qu'avoir un compte Google Cloud Platform (gcp).
 
-This is a Python web server using the Flask framework. It presents a front-end for the user to submit their votes, then write them into the Redis key-value store.
+Une fois le compte obtenu, il faut :
+- créer un nouveau projet
+- activer le service Kubernetes Engine API
+- s'authentifier avec les commandes suivantes :
+    - ```gcloud auth login```
+    - ```gcloud config set project PROJECT-ID``` (avec PROET-ID l'ID de votre projet)
+    - ```gcloud container clusters create NAME-CLUSTER --machine-type n1-standard-2 --num-nodes 3 --zone us-central1-c``` (avec NAME-CLUSTER le nom de votre choix)
 
-For building the Dockerfile, before starting `app.py`:
-- requirements have to be copied and installed in the container
-- all necessary files and directories have to be copied in the container
+Puis une fois le cluster créer, il faut s'y connecter (bouton se connecter) et utiliser la commande affichée sur la page, ressemblant à cela : ```gcloud container clusters get-credentials CLUSTER-NAME --region REGION --project PROJECT-ID```
 
-Port mapping:
-`5000` is used inside the container (see Python code). Each instance of vote will use the external port `500x` where `x` is the instance number
+La connexion devrait être établie après cela.
 
-### `result` service
+Pour la suite, il faut push des images docker sur un artifact registry du projet.
+Pour cela il faut aller créer un nouveau registre puis s'authentifier (dans Setup Instructions). La commande est similaire à la suivante : ```gcloud auth configure-docker europe-west9-docker.pkg.dev```
+Copiez l'adresse du répertoire, et modifiez dans le docker-compose.yaml le lien des images vote, seed, worker et result. Les liens devraient ressembler à : ```europe-west9-docker.pkg.dev/your-gcp-project/voting-image/result```
+Enfin construisez les images avec ```docker compose build```, et ajoutez les au registre avec : ```docker compose push```.
 
-This is a Node.js web server. The front-end presents the results of the votes. The result values are taken from the PostgreSQL database.
+finalement pour lancer le projet il faut déployer les services avec les commandes suivantes :
+- ```kubectl create -f db-service.yaml```
+- ```kubectl create -f db-deployement.yaml```
+- ```kubectl create -f redis-svc.yaml```
+- ```kubectl create -f redis-deployment.yaml```
+- ```kubectl create -f worker/worker-deployement.yaml```
+- ```kubectl create -f result/result-svc.yaml```
+- ```kubectl create -f result/result-deployement.yaml```
+- ```kubectl create -f vote/vote-svc.yaml```
+- ```kubectl create -f vote/vote-deployement.yaml```
+- ```kubectl create -f seed-data/seed-job.yaml```
 
-In the Dockerfile, before running the code:
-- copy package files into the container,
-- install `nodemon` with `npm install -g nodemon`
-- install more requirements:
-```
-npm ci
-npm cache clean --force
-mv /usr/local/app/node_modules /node_modules
-```
-- set the `PORT` environment variable
+## Terraform pour kubernetes
+Avant de faire cette partie, il faut avoir fait les étapes de la partie Kubernetes.
 
-Finally, run the code with `node server.js`.
+Installer terraform.
+Après avoir créé un projet sur gcp, allez dans "IAM" puis "Service Accounts".
+Créez un nouveau compte de service avec le rôle éditeur.
+Ensuite activez les services suivants :
+- Kubernetes Engine API
+- Compute Engine API
+  Retournez sur "Service Accounts" téléchargez une clé au format json.
+  Ensuite modifiez les configurations gcp dans le fichier providers.tf avec les informations suivantes :
+  ```provider "google" {```
+  ```  project = "your-project-id"```
+  ```  region  = "europe-west9"```
+  ```  zone    = "europe-west9-a"```
+  ```  credentials = file("downloaded_file.json")}```
 
+Cliquez ensuite sur l'adresse mail du compte par défaut du service Compute Engine. Ensuite dans les autorisations cliquez sur Grand accès. Dans le champ "Nouveaux comptes principaux" utilisez l'autocomplétion pour ajoutez le compte du service terraform (commence par terraform").
+Assignez-lui le rôle "Créateur de jetons du compte de service"
 
-### `seed` service
-
-This is a Python and bash program used to virtually send many vote requests to the `vote` server.
-
-First the file `make-data.py` has to be executed in the container. Second, the file `generate-votes.sh` has to be executed when starting the container.
-
-For benchmarking, `generate-votes.sh` uses the `ab` utility which needs to be installed, through the `apache2-utils` `apt` package.
-
-### `worker` service
-
-This is a .NET (C#) program that reads vote submissions from Redis store, compute the result and store it in the PostgreSQL database.
-
-It requires a little bit more work to compile and run:
-- use this as a base image
-```
-mcr.microsoft.com/dotnet/sdk:7.0
-```
-  with the argument `--platform=${BUILDPLATFORM}`
-- use `ARG` to define build arguments `TARGETPLATFORM`, `TARGETARCH` and `BUILDPLATFORM`. Print their values with `echo`.
-- in the `source/` directory, copy all worker files form this repo and run
-```
-dotnet restore -a $TARGETARCH
-dotnet publish -c release -o /app -a $TARGETARCH --self-contained false --no-restore
-```
-The application will be built inside the `/app` directory, launch with `dotnet Worker.dll`.
-
-For the multistage build, use this image: `mcr.microsoft.com/dotnet/runtime:7.0`.
-
-
-### Redis service
-
-This is a simple Redis service. Redis is a NOSQL database software focused on availability used for storing large volumes of data-structures (typically key-value pairs).
-
-In order to perform healthchecks while Redis is running, there must be a volume attached to the container. You will need to mount local the repo directory `./healthchecks/` into the `/healthchecks/` directory of the container.
-
-The check is done by executing the `redis.sh` script which uses the `curl` package.
-
-
-### PostgreSQL database service
-
-This is a simple PostgreSQL service.
-
-The same logic applies for healthchecks, mount a volume, use `postgres.sh` for checks and install `curl`.
-
-Moreover, in order to persist the data that comes from the votes, you need to create a Docker volume and attach it to the container.
-The volume will be named `db-data` and attached to the `/var/lib/postgresql/data` directory inside the container.
-
-### Nginx loadbalancer service
-
-This is a simple Nginx service. At its core, Nginx is a web-server but it can also be used for other purposes such as loadbalancing, HTTP cache, reverse proxy, etc.
-
-To configure Nginx as a loadbalancer (LB), you first need to edit accordingly the `./nginx/nginx.conf` file from this repo.
-Then in the Dockerfile:
-- remove the default Nginx configuration located at `/etc/nginx/conf.d/default.conf`,
-- copy `./nginx/nginx.conf` into the container at the above location.
-
-
-### Networking
-
-* The Redis store, the `worker` service and the PostgreSQL database are only available inside the `back-tier` network.
-* The `vote` and `result` services are on both the `front-tier` and `back-tier` network in order to (1) expose the frontend to users, and (2) communicate with the databases.
-* Finally, the `seed` and Nginx loadbalancer are on the `front-tier`.
-
-# Kubernetes project
+Ensuite lancez les commandes suivantes :
+- ```terraform init```
+- ```terraform plan```
+- ```terraform apply```
+- "yes"
